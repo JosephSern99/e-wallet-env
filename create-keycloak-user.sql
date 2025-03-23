@@ -1,0 +1,1 @@
+CREATE ROLE keycloak WITH PASSWORD 'keycloak';
