@@ -1,0 +1,1 @@
+docker-compose exec airflow-webserver ls -ld /opt/airflow/dags/scripts /opt/airflow/dags/config, run this at docker terminal

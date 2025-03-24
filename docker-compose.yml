@@ -1,6 +1,125 @@
+# services:
+#   # PostgreSQL database (pre-existing at localhost:5432)
+#   # Keep your existing PostgreSQL config, but adding to the same network
+#   postgres:
+#     image: postgres:17
+#     container_name: ewallet-postgres
+#     restart: always
+#     ports:
+#       - "5432:5432"
+#     environment:
+#       POSTGRES_USER: postgres
+#       POSTGRES_PASSWORD: postgres
+#       POSTGRES_DB: ewallet
+#       KEYCLOAK_USER: keycloak
+#       KEYCLOAK_PASSWORD: keycloak
+#       KEYCLOAK_DB: keycloak
+#     volumes:
+#       - postgres_data:/var/lib/postgresql/data
+#       - ./create-keycloak-user.sql:/docker-entrypoint-initdb.d/create-keycloak-user.sql
+#     networks:
+#       - ewallet-network
+#     healthcheck:
+#       test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+#       interval: 10s
+#       timeout: 5s
+#       retries: 5
+#   # Zookeeper for Kafka
+#   zookeeper:
+#     image: confluentinc/cp-zookeeper:7.3.0
+#     container_name: ewallet-zookeeper
+#     ports:
+#       - "2181:2181"
+#     environment:
+#       ZOOKEEPER_CLIENT_PORT: 2181
+#       ZOOKEEPER_TICK_TIME: 2000
+#     networks:
+#       - ewallet-network
+
+#   # Kafka broker
+#   kafka:
+#     image: confluentinc/cp-kafka:7.3.0
+#     container_name: ewallet-kafka
+#     depends_on:
+#       - zookeeper
+#     ports:
+#       - "9092:9092"
+#       - "29092:29092"
+#     environment:
+#       KAFKA_BROKER_ID: 1
+#       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+#       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+#       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+#       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+#       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+#       KAFKA_AUTO_CREATE_TOPICS_ENABLE: true
+#     networks:
+#       - ewallet-network
+
+#   # Kafka UI - management interface for Kafka
+#   kafka-ui:
+#     image: provectuslabs/kafka-ui:latest
+#     container_name: ewallet-kafka-ui
+#     depends_on:
+#       - kafka
+#     ports:
+#       - "8090:8080"
+#     environment:
+#       KAFKA_CLUSTERS_0_NAME: ewallet-kafka
+#       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:9092
+#       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+#     networks:
+#       - ewallet-network
+
+#   # Spring Boot backend
+#   # backend:
+#   #   build:
+#   #     context: ../backend
+#   #     dockerfile: Dockerfile
+#   #   container_name: ewallet-backend
+#   #   restart: always
+#   #   depends_on:
+#   #     postgres:
+#   #       condition: service_healthy
+#   #   ports:
+#   #     - "8085:8085" #port changed to 8085
+#   #   environment:
+#   #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ewallet
+#   #     SPRING_DATASOURCE_USERNAME: postgres
+#   #     SPRING_DATASOURCE_PASSWORD: postgres
+#   #     SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+#   #   networks:
+#   #     - ewallet-network
+
+
+#   # # Next.js frontend
+#   # frontend:
+#   #   build:
+#   #     context: ../e-wallet-frontend
+#   #     dockerfile: Dockerfile
+#   #   container_name: ewallet-frontend
+#   #   restart: always
+#   #   ports:
+#   #     - "3000:3000"
+#   #   environment:
+#   #     NEXT_PUBLIC_API_URL: http://localhost:8085/api #api url changed to 8085
+#   #   networks:
+#   #     - ewallet-network
+
+  
+
+# networks:
+#   ewallet-network:
+#     driver: bridge
+
+# volumes:
+#   postgres_data:
+
+
+# version: '3.8'
+
 services:
-  # PostgreSQL database (pre-existing at localhost:5432)
-  # Keep your existing PostgreSQL config, but adding to the same network
+  # PostgreSQL database
   postgres:
     image: postgres:17
     container_name: ewallet-postgres
@@ -24,6 +143,7 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+
   # Zookeeper for Kafka
   zookeeper:
     image: confluentinc/cp-zookeeper:7.3.0
@@ -72,39 +192,121 @@ services:
       - ewallet-network
 
   # Spring Boot backend
-  # backend:
-  #   build:
-  #     context: ../backend
-  #     dockerfile: Dockerfile
-  #   container_name: ewallet-backend
-  #   restart: always
-  #   depends_on:
-  #     postgres:
-  #       condition: service_healthy
-  #   ports:
-  #     - "8085:8085" #port changed to 8085
-  #   environment:
-  #     SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ewallet
-  #     SPRING_DATASOURCE_USERNAME: postgres
-  #     SPRING_DATASOURCE_PASSWORD: postgres
-  #     SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
-  #   networks:
-  #     - ewallet-network
+  backend:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: ewallet-backend
+    restart: always
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_started
+    ports:
+      - "8085:8085"
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/ewallet
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+    networks:
+      - ewallet-network
 
+  # Next.js frontend
+  frontend:
+    build:
+      context: ../e-wallet-frontend
+      dockerfile: Dockerfile
+    container_name: ewallet-frontend
+    restart: always
+    depends_on:
+      - backend
+    ports:
+      - "3000:3000"
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8085/api
+    networks:
+      - ewallet-network
+      
+  # Data Pipeline - Airflow
+  airflow-webserver:
+    image: apache/airflow:2.8.2
+    container_name: ewallet-airflow-webserver
+    depends_on:
+      - postgres
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+      - AIRFLOW__API__AUTH_BACKENDS=airflow.api.auth.backend.basic_auth
+      - _AIRFLOW_WWW_USER_CREATE=True
+      - _AIRFLOW_WWW_USER_USERNAME=airflow
+      - _AIRFLOW_WWW_USER_PASSWORD=airflow
+    volumes:
+      - ./data-pipeline:/opt/airflow/dags
+      - ./data-pipeline/scripts:/opt/airflow/dags/scripts
+      - ./data-pipeline/config:/opt/airflow/dags/config
+      - airflow_logs:/opt/airflow/logs
+      - ./data-pipeline/requirements.txt:/requirements.txt
+    ports:
+      - "8080:8080"
+    command: >
+      bash -c "
+      pip install -r /requirements.txt &&
+      airflow webserver"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - ewallet-network
 
-  # # Next.js frontend
-  # frontend:
-  #   build:
-  #     context: ../e-wallet-frontend
-  #     dockerfile: Dockerfile
-  #   container_name: ewallet-frontend
-  #   restart: always
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NEXT_PUBLIC_API_URL: http://localhost:8085/api #api url changed to 8085
-  #   networks:
-  #     - ewallet-network
+  # Data Pipeline - Scheduler
+  airflow-scheduler:
+    image: apache/airflow:2.8.2
+    container_name: ewallet-airflow-scheduler
+    depends_on:
+      - airflow-webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://postgres:postgres@postgres:5432/airflow
+      - AIRFLOW__CORE__FERNET_KEY=46BKJoQYlPPOexq0OhDZnIlNepKFf87WFwLbfzqDDho=
+      - AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION=True
+      - AIRFLOW__CORE__LOAD_EXAMPLES=False
+    volumes:
+      - ./data-pipeline:/opt/airflow/dags
+      - ./data-pipeline/scripts:/opt/airflow/dags/scripts
+      - ./data-pipeline/config:/opt/airflow/dags/config
+      - airflow_logs:/opt/airflow/logs
+      - ./data-pipeline/requirements.txt:/requirements.txt
+    command: >
+      bash -c "
+      pip install -r /requirements.txt &&
+      airflow scheduler"
+    networks:
+      - ewallet-network
+      
+  # Data Warehouse - Metabase for visualization
+  metabase:
+    image: metabase/metabase:latest
+    container_name: ewallet-metabase
+    ports:
+      - "3030:3000"
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: metabase
+      MB_DB_PORT: 5432
+      MB_DB_USER: postgres
+      MB_DB_PASS: postgres
+      MB_DB_HOST: postgres
+    depends_on:
+      - postgres
+    networks:
+      - ewallet-network
 
 networks:
   ewallet-network:
@@ -112,3 +314,4 @@ networks:
 
 volumes:
   postgres_data:
+  airflow_logs:

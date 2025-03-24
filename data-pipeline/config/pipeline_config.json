@@ -1,0 +1,17 @@
+{
+  "kafka": {
+    "bootstrap_servers": "kafka:9092",
+    "transaction_topic": "ewallet-transactions",
+    "user_activity_topic": "ewallet-user-activity"
+  },
+  "postgresql": {
+    "host": "postgres",
+    "port": 5432,
+    "user": "postgres",
+    "password": "postgres",
+    "database": "ewallet",
+    "data_warehouse_schema": "dw"
+  },
+  "batch_size": 1000,
+  "processing_interval": 60
+}
